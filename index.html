@@ -288,9 +288,10 @@
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <script>
-  // URL Web App Apps Script Bapak.
-  // Pastikan Code.gs punya doGet(e) yang mengembalikan JSON untuk action=getDashboardData.
   const API_URL = 'https://script.google.com/macros/s/AKfycbxf-iNr5mZ9ffUsyuoNreUis4HMBuSFUX5nQve60kRF33ZcZlkZ8n5R9hoHolo8Mvze/exec';
+
+  // Kolom I = index 8
+  const KAPASITAS_COLUMN_INDEX = 8;
 
   let map;
   let clusterGroup;
@@ -377,9 +378,8 @@
         ? 'Filter memakai kolom: <b>' + escapeHtml(data.statusColumn) + '</b>'
         : 'Kolom status belum ditemukan. Pastikan ada kolom Status / Status Operasional / Kondisi.';
 
-      document.getElementById('kapasitasDesc').innerHTML = data.kapasitasColumn
-        ? 'Dibaca dari kolom: <b>' + escapeHtml(data.kapasitasColumn) + '</b>'
-        : 'Kolom kapasitas belum ditemukan. Sistem akan mencoba membaca dari isi popup.';
+      document.getElementById('kapasitasDesc').innerHTML =
+        'Dibaca langsung dari <b>Kolom I - Kapasitas (ton/hari)</b>.';
 
       document.getElementById('kkDesc').innerHTML = data.kkColumn
         ? 'Dibaca dari kolom: <b>' + escapeHtml(data.kkColumn) + '</b>'
@@ -408,10 +408,6 @@
   }
 
   function normalizeResponse(json) {
-    // Mendukung beberapa kemungkinan struktur JSON dari Apps Script:
-    // 1) { markers: [...] }
-    // 2) { status:'success', data:{ markers:[...] } }
-    // 3) { status:'success', data:[...] }
     const raw = json && json.data && !Array.isArray(json.data) ? json.data : json;
     const markerSource = raw.markers || raw.data || json.data || [];
 
@@ -529,13 +525,17 @@
     let totalKk = 0;
 
     filteredData.forEach(function(item) {
-      (item.orderedData || []).forEach(function(d) {
+      const orderedData = item.orderedData || [];
+
+      // FIX: Kapasitas selalu dari kolom I
+      const kapasitasItem = orderedData[KAPASITAS_COLUMN_INDEX];
+      if (kapasitasItem) {
+        totalKapasitas += parseIndonesianNumber(kapasitasItem.value);
+      }
+
+      orderedData.forEach(function(d) {
         const key = String(d.key || '').toLowerCase();
         const value = String(d.value || '');
-
-        if (key.includes('kapasitas') || key.includes('ton')) {
-          totalKapasitas += parseIndonesianNumber(value);
-        }
 
         if (key.includes('kk') || key.includes('kepala keluarga')) {
           totalKk += parseIndonesianNumber(value);
@@ -681,7 +681,13 @@
     let s = String(value || '').trim();
     if (!s) return 0;
 
-    s = s.replace(/[^\d,.-]/g, '');
+    s = s
+      .replace(/ton\/hari/gi, '')
+      .replace(/ton/gi, '')
+      .replace(/hari/gi, '')
+      .replace(/[^\d,.-]/g, '');
+
+    if (!s) return 0;
 
     if (s.includes(',') && s.includes('.')) {
       s = s.replace(/\./g, '').replace(',', '.');
